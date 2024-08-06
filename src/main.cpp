@@ -3,10 +3,11 @@
 
 // #define DEBUG 1
 
+#include <Lightstrip.h>
 #include <webserver.h>
 
 char ssid[] = "WANNET";
-char pass[] = "";
+char pass[] = "eatmithkabobs";
 int wifiStatus = WL_IDLE_STATUS;
 WiFiServer server(80);
 Webserver web(&server);
@@ -16,6 +17,8 @@ constexpr pin_size_t LED_PIN_RED = 2;
 constexpr pin_size_t LED_PIN_GREEN = 3;
 constexpr pin_size_t LED_PIN_WHITE = 4;
 constexpr pin_size_t LED_PIN_BLUE = 5;
+pin_size_t led_pins[4] = {LED_PIN_RED, LED_PIN_GREEN, LED_PIN_WHITE, LED_PIN_BLUE};
+Lightstrip lights(led_pins);
 
 void enable_WiFi() {
     // check for the WiFi module:
@@ -63,13 +66,41 @@ void printWifiStatus() {
 
 int HandleLightsOn(const Request& req, Response& resp) {
     Serial.println("HandleLightsOn called");
+    resp.code = 204;
+    strcpy(resp.status, "No Content");
+
+    float dimmer = 1.0;
+    if (req.body.length() > 0) {
+        dimmer = req.body.toFloat();
+        Serial.print("New dimmer setting: ");
+        Serial.println(dimmer);
+    }
+    lights.set_power(WarmWhite, dimmer);
+    lights.drive();
+
     return 1;
 }
 
 int HandleLightsOff(const Request& req, Response& resp) {
     Serial.println("HandleLightsOff called");
+    lights.set_power(WarmWhite, 0.0f);
+    lights.drive();
+    resp.code = 204;
+    strcpy(resp.status, "No Content");
     return 1;
 }
+
+int HandleLightsDim(const Request& req, Response& resp) {
+    Serial.println("HandleLightsDim called");
+    resp.code = 204;
+    strcpy(resp.status, "No Content");
+
+    lights.set_power(WarmWhite, 0.1f);
+    lights.drive();
+
+    return 1;
+}
+
 
 void setup() {
 // write your initialization code here
@@ -102,9 +133,11 @@ void loop() {
 // write your code here
     client = server.available();
     Response resp;
-    if (web.listen_once(client, resp)) {
-
-        resp.write(client);
+    if (client) {
+        if (web.listen_once(client, resp)) {
+            resp.write(client);
+        }
+        client.stop();
     }
 
 }
