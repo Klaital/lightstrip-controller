@@ -7,7 +7,7 @@
 #include <webserver.h>
 
 char ssid[] = "WANNET";
-char pass[] = "eatmithkabobs";
+char pass[] = "";
 int wifiStatus = WL_IDLE_STATUS;
 WiFiServer server(80);
 Webserver web(&server);
@@ -19,6 +19,12 @@ constexpr pin_size_t LED_PIN_WHITE = 4;
 constexpr pin_size_t LED_PIN_BLUE = 5;
 pin_size_t led_pins[4] = {LED_PIN_RED, LED_PIN_GREEN, LED_PIN_WHITE, LED_PIN_BLUE};
 Lightstrip lights(led_pins);
+
+unsigned long wakeup_start_time = 0;
+unsigned long wakeup_last_update = 0;
+constexpr float wakeup_duration_seconds = 1800.0;
+constexpr unsigned long wakeup_update_interval = 10; // seconds
+bool wakeup_in_progress = false;
 
 void enable_WiFi() {
     // check for the WiFi module:
@@ -90,13 +96,29 @@ int HandleLightsOff(const Request& req, Response& resp) {
     return 1;
 }
 
-int HandleLightsDim(const Request& req, Response& resp) {
-    Serial.println("HandleLightsDim called");
+// helper function that configures the variables needed to enable gradual wakeup dimmer mode.
+void start_wakeup() {
+    wakeup_in_progress = true;
+    wakeup_start_time = WiFi.getTime();
+    wakeup_last_update = wakeup_start_time;
+}
+
+// helper function to break out of gradual wakeup mode
+void halt_wakeup() {
+    wakeup_in_progress = false;
+}
+
+
+int HandleLightsWakeup(const Request& req, Response& resp) {
+    Serial.println("HandleLightsWakeup called");
     resp.code = 204;
     strcpy(resp.status, "No Content");
 
-    lights.set_power(WarmWhite, 0.1f);
+    // TODO: we could use the request body to specify the duration of the wakeup routine.
+    lights.set_power(WarmWhite, 0.0f);
     lights.drive();
+
+    start_wakeup();
 
     return 1;
 }
@@ -126,6 +148,7 @@ void setup() {
     // configure http server
     web.register_handler("PUT", "/lights/?state=on", &HandleLightsOn);
     web.register_handler("PUT", "/lights/?state=off", &HandleLightsOff);
+    web.register_handler("PUT", "/lights/wakeup", &HandleLightsWakeup);
     web.begin();
 }
 
@@ -140,4 +163,22 @@ void loop() {
         client.stop();
     }
 
+    if (wakeup_in_progress) {
+        // how long since the wakeup alarm triggered, in seconds
+        const unsigned long current_time = WiFi.getTime();
+        const auto elapsed_seconds = static_cast<float>(current_time - wakeup_start_time);
+        const unsigned long elapsed_since_last_update = current_time - wakeup_last_update;
+        if (elapsed_seconds > wakeup_duration_seconds) {
+            lights.set_power(WarmWhite, 1.0);
+            lights.drive();
+            wakeup_in_progress = false;
+        } else if (elapsed_since_last_update > wakeup_update_interval) {
+            // drive the lights slightly brighter based on
+            // the elapsed time since the wakeup call began.
+            const float dimmer = static_cast<float>(elapsed_seconds) / wakeup_duration_seconds;
+            lights.set_power(WarmWhite, dimmer);
+            lights.drive();
+            wakeup_last_update = current_time;
+        }
+    }
 }
