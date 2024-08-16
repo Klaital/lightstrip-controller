@@ -3,11 +3,13 @@
 
 // #define DEBUG 1
 
+#include <Dimmer.h>
 #include <Lightstrip.h>
 #include <webserver.h>
 
-char ssid[] = "WANNET";
-char pass[] = "";
+#include "secrets.h"
+char ssid[] = WIFI_SSID;
+char pass[] = WIFI_PASS;
 int wifiStatus = WL_IDLE_STATUS;
 WiFiServer server(80);
 Webserver web(&server);
@@ -31,13 +33,16 @@ void enable_WiFi() {
     if (WiFi.status() == WL_NO_MODULE) {
         Serial.println("Communication with WiFi module failed!");
         // don't continue
-        while (true);
+        while (true)
+            ;
     }
 
-    String fv = WiFi.firmwareVersion();
+    const String fv = WiFi.firmwareVersion();
     if (fv < "1.0.0") {
         Serial.println("Please upgrade the firmware");
     }
+
+    WiFi.setHostname(HOSTNAME);
 }
 void connect_WiFi() {
     // attempt to connect to Wifi network:
@@ -46,6 +51,8 @@ void connect_WiFi() {
         Serial.println(ssid);
         // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
         wifiStatus = WiFi.begin(ssid, pass);
+        Serial.print("WiFi Status: ");
+        Serial.println(wifiStatus);
         // wait 10 seconds for connection:
         delay(5000);
     }
@@ -71,7 +78,7 @@ void printWifiStatus() {
 }
 
 int HandleLightsOn(const Request& req, Response& resp) {
-    Serial.println("HandleLightsOn called");
+    wakeup_in_progress = false;
     resp.code = 204;
     strcpy(resp.status, "No Content");
 
@@ -88,7 +95,7 @@ int HandleLightsOn(const Request& req, Response& resp) {
 }
 
 int HandleLightsOff(const Request& req, Response& resp) {
-    Serial.println("HandleLightsOff called");
+    wakeup_in_progress = false;
     lights.set_power(WarmWhite, 0.0f);
     lights.drive();
     resp.code = 204;
@@ -123,6 +130,18 @@ int HandleLightsWakeup(const Request& req, Response& resp) {
     return 1;
 }
 
+constexpr pin_size_t dimmer_pin = A1;
+Dimmer dimmer(dimmer_pin, 12, 4095, 500);
+
+void HandleDimmerChange(const float dimmer_read) {
+#ifdef DEBUG
+    Serial.print("Handling dimmer movement to ");
+    Serial.println(dimmer_read);
+#endif
+    wakeup_in_progress = false; // abort wakeup routine if it was in progress
+    lights.set_power(WarmWhite, dimmer_read);
+    lights.drive();
+}
 
 void setup() {
 // write your initialization code here
@@ -137,12 +156,13 @@ void setup() {
     pinMode(LED_PIN_BLUE, OUTPUT);
     digitalWrite(LED_PIN_BLUE, LOW);
 
+#ifdef DEBUG
+    while(!Serial)
+        ; //no-op, just wait here until someone connects to the serial port
+#endif
 
     enable_WiFi();
     connect_WiFi();
-#ifdef DEBUG
-    while(!Serial);
-#endif
     printWifiStatus();
 
     // configure http server
@@ -150,19 +170,28 @@ void setup() {
     web.register_handler("PUT", "/lights/?state=off", &HandleLightsOff);
     web.register_handler("PUT", "/lights/wakeup", &HandleLightsWakeup);
     web.begin();
+
+    // configure the Dimmer sensor
+    dimmer.register_change_handler(&HandleDimmerChange);
+    dimmer.begin();
 }
 
 void loop() {
-// write your code here
+
+    // listen for http commands
     client = server.available();
-    Response resp;
     if (client) {
+        Response resp;
         if (web.listen_once(client, resp)) {
             resp.write(client);
         }
         client.stop();
     }
 
+    // check the dimmer for a light override
+    dimmer.poll();
+
+    // run the gentle wakeup routine
     if (wakeup_in_progress) {
         // how long since the wakeup alarm triggered, in seconds
         const unsigned long current_time = WiFi.getTime();

@@ -17,7 +17,7 @@ void Lightstrip::begin() {
     }
 }
 
-void Lightstrip::set_power(const int  new_settings[4], const float dimmer) {
+void Lightstrip::set_power(const int new_settings[4], const float dimmer) {
     this->dimmer = dimmer;
     if (dimmer < 0.0f) {
         this->dimmer = 0.0f;
