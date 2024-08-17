@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <WiFiNINA.h>
 
-#define DEBUG 1
+// #define DEBUG 1
 
 #include <Dimmer.h>
 #include <Lightstrip.h>
