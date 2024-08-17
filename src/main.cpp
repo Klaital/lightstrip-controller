@@ -1,13 +1,14 @@
 #include <Arduino.h>
 #include <WiFiNINA.h>
 
-// #define DEBUG 1
+#define DEBUG 1
 
 #include <Dimmer.h>
 #include <Lightstrip.h>
 #include <webserver.h>
 
 #include "secrets.h"
+#include "config.h"
 char ssid[] = WIFI_SSID;
 char pass[] = WIFI_PASS;
 int wifiStatus = WL_IDLE_STATUS;
@@ -27,6 +28,12 @@ unsigned long wakeup_last_update = 0;
 constexpr float wakeup_duration_seconds = 1800.0;
 constexpr unsigned long wakeup_update_interval = 10; // seconds
 bool wakeup_in_progress = false;
+
+// MQTT setup
+#include <ArduinoMqttClient.h>
+constexpr char mqttBrokerHost[] = MQTT_BROKER_HOST;
+WiFiClient mqttWifi;
+MqttClient mqttClient(mqttWifi);
 
 void enable_WiFi() {
     // check for the WiFi module:
@@ -69,7 +76,7 @@ void printWifiStatus() {
     Serial.println(ip);
 
     // print the received signal strength:
-    long rssi = WiFi.RSSI();
+    const long rssi = WiFi.RSSI();
     Serial.print("signal strength (RSSI):");
     Serial.print(rssi);
     Serial.println(" dBm");
@@ -134,10 +141,10 @@ constexpr pin_size_t dimmer_pin = A1;
 Dimmer dimmer(dimmer_pin, 12, 4095, 500);
 
 void HandleDimmerChange(const float dimmer_read) {
-#ifdef DEBUG
-    Serial.print("Handling dimmer movement to ");
-    Serial.println(dimmer_read);
-#endif
+// #ifdef DEBUG
+     // Serial.print("Handling dimmer movement to ");
+     Serial.println(dimmer_read);
+// #endif
     wakeup_in_progress = false; // abort wakeup routine if it was in progress
     lights.set_power(WarmWhite, dimmer_read);
     lights.drive();
@@ -174,6 +181,21 @@ void setup() {
     // configure the Dimmer sensor
     dimmer.register_change_handler(&HandleDimmerChange);
     dimmer.begin();
+
+    // Configure the MQTT listener
+    mqttClient.setId("bedroom-lights");
+    Serial.println("Connecting to MQTT broker");
+    if (!mqttClient.connect(mqttBrokerHost, MQTT_BROKER_PORT)) {
+        Serial.print("MQTT connection failed. Error = ");
+        Serial.println(mqttClient.connectError());
+        while(true); // halt here
+    }
+
+    Serial.println("Connection successful");
+    Serial.print("Subscribing to light control topic: ");
+    Serial.println(MQTT_TOPIC_DIMMER);
+
+    mqttClient.subscribe(MQTT_TOPIC_DIMMER);
 }
 
 void loop() {
@@ -186,6 +208,20 @@ void loop() {
             resp.write(client);
         }
         client.stop();
+    }
+
+    // listen for mqtt commands
+    const int messageSize = mqttClient.parseMessage();
+    if (messageSize) {
+        // message recieved - print the contents
+        const String msg = mqttClient.readString();
+        Serial.println(msg);
+        const float dimmerVal = msg.toFloat();
+        if (dimmerVal >= 0.0f && dimmerVal <= 1.0f) {
+            wakeup_in_progress = false;
+            lights.set_power(WarmWhite, dimmerVal);
+            lights.drive();
+        }
     }
 
     // check the dimmer for a light override
