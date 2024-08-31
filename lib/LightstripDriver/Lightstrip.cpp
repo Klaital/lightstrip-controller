@@ -30,6 +30,15 @@ void Lightstrip::set_power(const int new_settings[4], const float dimmer) {
     }
 }
 
+void Lightstrip::toggle_power() {
+    if (this->dimmer > 0.0f) {
+        this->dimmer = 0.0f;
+    } else {
+        this->dimmer = 1.0f;
+    }
+}
+
+
 void Lightstrip::drive() const {
     for (int i=0; i<4; i++) {
         const int pwr = static_cast<int>(

@@ -29,6 +29,12 @@ constexpr float wakeup_duration_seconds = 1800.0;
 constexpr unsigned long wakeup_update_interval = 10; // seconds
 bool wakeup_in_progress = false;
 
+constexpr pin_size_t BUTTON_PIN = 6;
+unsigned long button_last_press = 0;
+PinStatus button_previous_state = LOW;
+constexpr unsigned long button_debounce_interval = 1000;
+
+
 // MQTT setup
 #include <ArduinoMqttClient.h>
 constexpr char mqttBrokerHost[] = MQTT_BROKER_HOST;
@@ -141,10 +147,9 @@ constexpr pin_size_t dimmer_pin = A1;
 Dimmer dimmer(dimmer_pin, 12, 4095, 500);
 
 void HandleDimmerChange(const float dimmer_read) {
-// #ifdef DEBUG
-     // Serial.print("Handling dimmer movement to ");
+#ifdef DEBUG
      Serial.println(dimmer_read);
-// #endif
+#endif
     wakeup_in_progress = false; // abort wakeup routine if it was in progress
     lights.set_power(WarmWhite, dimmer_read);
     lights.drive();
@@ -162,6 +167,10 @@ void setup() {
     digitalWrite(LED_PIN_WHITE, LOW);
     pinMode(LED_PIN_BLUE, OUTPUT);
     digitalWrite(LED_PIN_BLUE, LOW);
+
+    // Initialize the button sensor
+    pinMode(BUTTON_PIN, INPUT_PULLDOWN);
+
 
 #ifdef DEBUG
     while(!Serial)
@@ -226,6 +235,19 @@ void loop() {
 
     // check the dimmer for a light override
     dimmer.poll();
+
+    // check the button for a light override
+    const PinStatus button_state = digitalRead(BUTTON_PIN);
+    if (button_state == HIGH && button_previous_state == LOW) {
+        const unsigned long now = millis();
+        if (now - button_last_press > button_debounce_interval) {
+            // when the button is pressed, toggle the lights.
+            lights.toggle_power();
+            lights.drive();
+            button_last_press = now;
+        }
+    }
+    button_previous_state = button_state;
 
     // run the gentle wakeup routine
     if (wakeup_in_progress) {
