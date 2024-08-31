@@ -32,7 +32,7 @@ bool wakeup_in_progress = false;
 constexpr pin_size_t BUTTON_PIN = 6;
 unsigned long button_last_press = 0;
 PinStatus button_previous_state = LOW;
-constexpr unsigned long button_debounce_interval = 1000;
+constexpr unsigned long button_debounce_interval = 250;
 
 
 // MQTT setup
