@@ -29,7 +29,7 @@ constexpr float wakeup_duration_seconds = 1800.0;
 constexpr unsigned long wakeup_update_interval = 10; // seconds
 bool wakeup_in_progress = false;
 
-constexpr pin_size_t BUTTON_PIN = 6;
+constexpr pin_size_t BUTTON_PIN = 7;
 unsigned long button_last_press = 0;
 PinStatus button_previous_state = LOW;
 constexpr unsigned long button_debounce_interval = 250;
