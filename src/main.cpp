@@ -61,7 +61,9 @@ void connect_WiFi() {
     // attempt to connect to Wifi network:
     while (wifiStatus != WL_CONNECTED) {
         Serial.print("Attempting to connect to SSID: ");
-        Serial.println(ssid);
+        Serial.print(ssid);
+        Serial.print(" with password ");
+        Serial.println(pass);
         // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
         wifiStatus = WiFi.begin(ssid, pass);
         Serial.print("WiFi Status: ");
@@ -242,6 +244,7 @@ void loop() {
         const unsigned long now = millis();
         if (now - button_last_press > button_debounce_interval) {
             // when the button is pressed, toggle the lights.
+            wakeup_in_progress = false;
             lights.toggle_power();
             lights.drive();
             button_last_press = now;
