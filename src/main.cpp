@@ -207,6 +207,7 @@ void setup() {
     Serial.println(MQTT_TOPIC_DIMMER);
 
     mqttClient.subscribe(MQTT_TOPIC_DIMMER);
+    mqttClient.subscribe(MQTT_TOPIC_WAKEUP);
 }
 
 void loop() {
@@ -224,14 +225,25 @@ void loop() {
     // listen for mqtt commands
     const int messageSize = mqttClient.parseMessage();
     if (messageSize) {
-        // message recieved - print the contents
+        const String topic = mqttClient.messageTopic();
         const String msg = mqttClient.readString();
-        Serial.println(msg);
-        const float dimmerVal = msg.toFloat();
-        if (dimmerVal >= 0.0f && dimmerVal <= 1.0f) {
-            wakeup_in_progress = false;
-            lights.set_power(WarmWhite, dimmerVal);
-            lights.drive();
+        Serial.print(topic);
+        Serial.print(": \"");
+        Serial.print(msg);
+        Serial.println("\"");
+
+        // Handle the MQTT message based on which topic it came in on
+        if (topic.equals(MQTT_TOPIC_DIMMER)) {
+            const float dimmerVal = msg.toFloat();
+            if (dimmerVal >= 0.0f && dimmerVal <= 1.0f) {
+                Serial.println("Remote dimmer command");
+                wakeup_in_progress = false;
+                lights.set_power(WarmWhite, dimmerVal);
+                lights.drive();
+            }
+        } else if (topic.equals(MQTT_TOPIC_WAKEUP)) {
+            Serial.println("Starting wakeup");
+            wakeup_in_progress = true;
         }
     }
 
